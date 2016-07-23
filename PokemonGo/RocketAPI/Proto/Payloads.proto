@@ -185,7 +185,7 @@ message EggIncubator {
   AllEnum.ItemType item_type = 2;
   AllEnum.EggIncubatorType incubator_type = 3;
   int32 uses_remaining = 4;
-  int64 pokemon_id = 5; // TODO: Check if is PokemonType
+  AllEnum.PokemonId pokemon_id = 5; // TODO: Check if is PokemonType
   double start_km_walked = 6;
   double target_km_walked = 7;
 }
@@ -906,4 +906,13 @@ message EvolvePokemonOut {
     Pokemon EvolvedPokemon = 2;
     int32 ExpAwarded = 3;
     int32 CandyAwarded = 4;
+}
+
+message UseEggIncubatorRequest {
+	fixed64 PokemonId = 1;
+}
+
+message RecycleInventoryItem {
+	AllEnum.ItemId ItemId = 1;
+	int32 Count = 2;
 }

@@ -20,6 +20,7 @@ namespace PokemonGo.RocketAPI.Extensions
             var result = await client.PostAsync(url, new ByteArrayContent(data.ToByteArray()));
 
             //Decode message
+            var stringData = await result.Content.ReadAsStringAsync();
             var responseData = await result.Content.ReadAsByteArrayAsync();
             var codedStream = new CodedInputStream(responseData);
             var decodedResponse = new Response();

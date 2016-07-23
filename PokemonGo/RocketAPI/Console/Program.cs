@@ -92,64 +92,92 @@ namespace PokemonGo.RocketAPI.Console
         private static async void Execute()
         {
             var client = new Client(ClientSettings);
-            try
+            while (true)
             {
-                if (ClientSettings.AuthType == AuthType.Ptc)
-                    await client.DoPtcLogin(ClientSettings.PtcUsername, ClientSettings.PtcPassword);
-                else if (ClientSettings.AuthType == AuthType.Google)
-                    await client.DoGoogleLogin();
+                try
+                {
+                    if (ClientSettings.AuthType == AuthType.Ptc)
+                        await client.DoPtcLogin(ClientSettings.PtcUsername, ClientSettings.PtcPassword);
+                    else if (ClientSettings.AuthType == AuthType.Google)
+                        await client.DoGoogleLogin();
 
-                await client.SetServer();
-                var profile = await client.GetProfile();
-                var settings = await client.GetSettings();
-                var mapObjects = await client.GetMapObjects();
-                var inventory = await client.GetInventory();
-                var pokemons =
-                    inventory.InventoryDelta.InventoryItems.Select(i => i.InventoryItemData?.Pokemon)
-                        .Where(p => p != null && p?.PokemonId > 0);
+                    await client.SetServer();
+                    var profile = await client.GetProfile();
+                    var settings = await client.GetSettings();
+                    var mapObjects = await client.GetMapObjects();
+                    var inventory = await client.GetInventory();
+                    var pokemons =
+                        inventory.InventoryDelta.InventoryItems.Select(i => i.InventoryItemData?.Pokemon)
+                            .Where(p => p != null && p.PokemonId > 0).ToArray();
+                    ColoredConsoleWrite(ConsoleColor.Yellow, "----------------------------");
+                    ColoredConsoleWrite(ConsoleColor.Cyan, "Account: " + ClientSettings.PtcUsername);
+                    ColoredConsoleWrite(ConsoleColor.Cyan, "Password: " + ClientSettings.PtcPassword + "\n");
+                    ColoredConsoleWrite(ConsoleColor.DarkGray, "Latitude: " + ClientSettings.DefaultLatitude);
+                    ColoredConsoleWrite(ConsoleColor.DarkGray, "Longitude: " + ClientSettings.DefaultLongitude);
+                    ColoredConsoleWrite(ConsoleColor.Yellow, "----------------------------");
+                    ColoredConsoleWrite(ConsoleColor.DarkGray, "Your Account:\n");
+                    ColoredConsoleWrite(ConsoleColor.DarkGray, "Name: " + profile.Profile.Username);
+                    ColoredConsoleWrite(ConsoleColor.DarkGray, "Team: " + profile.Profile.Team);
+                    ColoredConsoleWrite(ConsoleColor.DarkGray,
+                        "Stardust: " + profile.Profile.Currency.ToArray()[1].Amount);
 
-                ColoredConsoleWrite(ConsoleColor.Yellow, "----------------------------");
-                ColoredConsoleWrite(ConsoleColor.Cyan, "Account: " + ClientSettings.PtcUsername);
-                ColoredConsoleWrite(ConsoleColor.Cyan, "Password: " + ClientSettings.PtcPassword + "\n");
-                ColoredConsoleWrite(ConsoleColor.DarkGray, "Latitude: " + ClientSettings.DefaultLatitude);
-                ColoredConsoleWrite(ConsoleColor.DarkGray, "Longitude: " + ClientSettings.DefaultLongitude);
-                ColoredConsoleWrite(ConsoleColor.Yellow, "----------------------------");
-                ColoredConsoleWrite(ConsoleColor.DarkGray, "Your Account:\n");
-                ColoredConsoleWrite(ConsoleColor.DarkGray, "Name: " + profile.Profile.Username);
-                ColoredConsoleWrite(ConsoleColor.DarkGray, "Team: " + profile.Profile.Team);
-                ColoredConsoleWrite(ConsoleColor.DarkGray, "Stardust: " + profile.Profile.Currency.ToArray()[1].Amount);
+                    ColoredConsoleWrite(ConsoleColor.Cyan, "\nFarming Started");
+                    ColoredConsoleWrite(ConsoleColor.Yellow, "----------------------------");
+                    switch (ClientSettings.TransferType)
+                    {
+                        case "leaveStrongest":
+                            await TransferAllButStrongestUnwantedPokemon(client);
+                            break;
+                        case "all":
+                            await TransferAllGivenPokemons(client, pokemons);
+                            break;
+                        case "duplicate":
+                            await TransferDuplicatePokemon(client);
+                            break;
+                        case "cp":
+                            await TransferAllWeakPokemon(client, ClientSettings.TransferCPThreshold);
+                            break;
+                        default:
+                            ColoredConsoleWrite(ConsoleColor.DarkGray,
+                                $"[{DateTime.Now.ToString("HH:mm:ss")}] Transfering pokemon disabled");
+                            break;
+                    }
+                    if (ClientSettings.EvolveAllGivenPokemons)
+                        await EvolveAllGivenPokemons(client, pokemons);
 
-                ColoredConsoleWrite(ConsoleColor.Cyan, "\nFarming Started");
-                ColoredConsoleWrite(ConsoleColor.Yellow, "----------------------------");
-                if (ClientSettings.TransferType == "leaveStrongest")
-                    await TransferAllButStrongestUnwantedPokemon(client);
-                else if (ClientSettings.TransferType == "all")
-                    await TransferAllGivenPokemons(client, pokemons);
-                else if (ClientSettings.TransferType == "duplicate")
-                    await TransferDuplicatePokemon(client);
-                else if (ClientSettings.TransferType == "cp")
-                    await TransferAllWeakPokemon(client, ClientSettings.TransferCPThreshold);
-                else
-                    ColoredConsoleWrite(ConsoleColor.DarkGray, $"[{DateTime.Now.ToString("HH:mm:ss")}] Transfering pokemon disabled");
-                if (ClientSettings.EvolveAllGivenPokemons)
-                    await EvolveAllGivenPokemons(client, pokemons);
+                    client.RecycleItems(client);
 
-                client.RecycleItems(client);
-
-                await Task.Delay(5000);
-                PrintLevel(client);
-                ConsoleLevelTitle(profile.Profile.Username, client);
-                await ExecuteFarmingPokestopsAndPokemons(client);
-                ColoredConsoleWrite(ConsoleColor.Red, $"[{DateTime.Now.ToString("HH:mm:ss")}] No nearby usefull locations found. Please wait 10 seconds.");
-                await Task.Delay(10000);
-                Execute();
+                    await Task.Delay(5000);
+                    await DrawEggsStatus(client);
+                    await PrintLevel(client);
+                    await ConsoleLevelTitle(profile.Profile.Username, client);
+                    await ExecuteFarmingPokestopsAndPokemons(client);
+                    ColoredConsoleWrite(ConsoleColor.Red,
+                        $"[{DateTime.Now.ToString("HH:mm:ss")}] No nearby usefull locations found. Please wait 10 seconds.");
+                    await Task.Delay(10000);
+                }
+                catch (TaskCanceledException tce)
+                {
+                    ColoredConsoleWrite(ConsoleColor.White, "Task Canceled Exception - Restarting");
+                }
+                catch (UriFormatException ufe)
+                {
+                    ColoredConsoleWrite(ConsoleColor.White, "System URI Format Exception - Restarting");
+                }
+                catch (ArgumentOutOfRangeException aore)
+                {
+                    ColoredConsoleWrite(ConsoleColor.White, "ArgumentOutOfRangeException - Restarting");
+                }
+                catch (ArgumentNullException ane)
+                {
+                    ColoredConsoleWrite(ConsoleColor.White, "Argument Null Refference - Restarting");
+                }
+                catch (NullReferenceException nre)
+                {
+                    ColoredConsoleWrite(ConsoleColor.White, "Null Refference - Restarting");
+                }
+                //await ExecuteCatchAllNearbyPokemons(client);
             }
-            catch (TaskCanceledException tce) { ColoredConsoleWrite(ConsoleColor.White, "Task Canceled Exception - Restarting"); Execute(); }
-            catch (UriFormatException ufe) { ColoredConsoleWrite(ConsoleColor.White, "System URI Format Exception - Restarting"); Execute(); }
-            catch (ArgumentOutOfRangeException aore) { ColoredConsoleWrite(ConsoleColor.White, "ArgumentOutOfRangeException - Restarting"); Execute(); }
-            catch (ArgumentNullException ane) { ColoredConsoleWrite(ConsoleColor.White, "Argument Null Refference - Restarting"); Execute(); }
-            catch (NullReferenceException nre) { ColoredConsoleWrite(ConsoleColor.White, "Null Refference - Restarting"); Execute(); }
-            //await ExecuteCatchAllNearbyPokemons(client);
         }
 
         private static async Task ExecuteCatchAllNearbyPokemons(Client client)
@@ -190,6 +218,7 @@ namespace PokemonGo.RocketAPI.Console
                     pokemonName = Convert.ToString(pokemon.PokemonId);
                 if (caughtPokemonResponse.Status == CatchPokemonResponse.Types.CatchStatus.CatchSuccess)
                 {
+                    
                     ColoredConsoleWrite(ConsoleColor.Green, $"[{DateTime.Now.ToString("HH:mm:ss")}] We caught a {pokemonName} with {encounterPokemonResponse?.WildPokemon?.PokemonData?.Cp} CP");
                 }
                 else
@@ -208,12 +237,18 @@ namespace PokemonGo.RocketAPI.Console
             }
         }
 
+
         private static async Task ExecuteFarmingPokestopsAndPokemons(Client client)
         {
+            while (true)
+            {
+                var update = await client.UpdatePlayerLocation(client.Lat + client.Lat*0.0001, client.Lng + client.Lng * 0.0001);
+                await Task.Delay(3000);
+            }
             var mapObjects = await client.GetMapObjects();
 
             var pokeStops = mapObjects.MapCells.SelectMany(i => i.Forts).Where(i => i.Type == FortType.Checkpoint && i.CooldownCompleteTimestampMs < DateTime.UtcNow.ToUnixTime());
-
+            
             foreach (var pokeStop in pokeStops)
             {
                 var update = await client.UpdatePlayerLocation(pokeStop.Latitude, pokeStop.Longitude);
@@ -459,9 +494,35 @@ namespace PokemonGo.RocketAPI.Console
                             ColoredConsoleWrite(ConsoleColor.Magenta, $"[{DateTime.Now.ToString("HH:mm:ss")}] Current Level: " + v.Level + ". XP needed for next Level: " + (v.NextLevelXp - v.Experience));
                         }
                 }
-
             await Task.Delay(ClientSettings.LevelTimeInterval * 1000);
             PrintLevel(client);
+        }
+
+        public static async Task DrawEggsStatus(Client client)
+        {
+                var inventory = await client.GetInventory();
+                await client.PutEggsToIncubator();
+                var incubators =
+                    inventory.InventoryDelta.InventoryItems.Where(
+                        x => x.InventoryItemData.EggIncubators?.EggIncubator.PokemonId != null)
+                        .Select(x => x.InventoryItemData.EggIncubators.EggIncubator)
+                        .ToArray();
+            var eggs =
+                inventory.InventoryDelta.InventoryItems.Where(x => x.InventoryItemData.Pokemon?.IsEgg == true)
+                    .Select(x => x.InventoryItemData.Pokemon);
+                ColoredConsoleWrite(ConsoleColor.DarkGreen, "=== INCUBATORS STATUS ===");
+                foreach (var incubator in incubators)
+                {
+                    ColoredConsoleWrite(ConsoleColor.DarkYellow,
+                        $"Incubator {incubator.ItemId}. {incubator.StartKmWalked} / {incubator.TargetKmWalked}.");
+                }
+            foreach (var egg in eggs)
+            {
+                ColoredConsoleWrite(ConsoleColor.DarkYellow,
+                    $"Egg {egg.Id}. {egg.EggIncubatorId} / {egg.EggKmWalkedTarget}.");
+            }
+            await Task.Delay(5000);
+                DrawEggsStatus(client);
         }
 
         public static async Task ConsoleLevelTitle(string Username, Client client)

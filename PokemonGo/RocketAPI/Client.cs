@@ -27,6 +27,9 @@ namespace PokemonGo.RocketAPI
         private string _apiUrl;
         private AuthType _authType = AuthType.Google;
 
+        public double Lat => _currentLat;
+        public double Lng => _currentLng;
+
         private double _currentLat;
         private double _currentLng;
         private Request.Types.UnknownAuth _unknownAuth;
@@ -51,6 +54,32 @@ namespace PokemonGo.RocketAPI
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "*/*");
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Content-Type",
                 "application/x-www-form-urlencoded");
+        }
+
+
+        public async Task PutEggsToIncubator()
+        {
+            var inventory = await GetInventory();
+            var emptyIncubator = inventory.InventoryDelta.InventoryItems
+                    .FirstOrDefault(x => x.InventoryItemData.EggIncubators?.EggIncubator?.PokemonId != null);
+            var anyEgg =
+                inventory.InventoryDelta.InventoryItems.Select(x => x.InventoryItemData.Pokemon).Where(x => x?.IsEgg == true).OrderBy(x => x.EggKmWalkedTarget).FirstOrDefault();
+            if (emptyIncubator == null || anyEgg == null) return;
+
+            var customRequest = new UseEggIncubatorRequest
+            {
+                PokemonId = anyEgg.Id
+            };
+
+            var useIncubatorRequest = RequestBuilder.GetRequest(_unknownAuth, _currentLat, _currentLng, 30,
+                new Request.Types.Requests
+                {
+                    Type = (int)RequestType.USE_ITEM_EGG_INCUBATOR,
+                    Message = customRequest.ToByteString()
+                });
+            var res = await _httpClient.PostProtoPayload<Request, Response.Types.Unknown6>($"https://{_apiUrl}/rpc",
+                    useIncubatorRequest);
+
         }
 
         public async Task<CatchPokemonResponse> CatchPokemon(ulong encounterId, string spawnPointGuid, double pokemonLat,
@@ -435,7 +464,7 @@ namespace PokemonGo.RocketAPI
 
         public async Task<Response.Types.Unknown6> RecycleItem(AllEnum.ItemId itemId, int amount)
         {
-            var customRequest = new InventoryItemData.RecycleInventoryItem
+            var customRequest = new RecycleInventoryItem
             {
                 ItemId = (AllEnum.ItemId)Enum.Parse(typeof(AllEnum.ItemId), itemId.ToString()),
                 Count = amount
